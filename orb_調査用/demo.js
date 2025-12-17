@@ -402,32 +402,41 @@ function exportOrbAlignedWithMerges(pgridwidget, fileName = "pivot_aligned.xlsx"
                 continue;
             }
 
+            const RED_FONT = { color: { rgb: "FFFF0000" } }; // 赤
+
+            function applyNegativeRed(style, n) {
+                if (typeof n === "number" && n < 0) {
+                    style.font = { ...(style.font || {}), ...RED_FONT };
+                }
+                return style;
+            }
+
             if (percentRow) {
                 // 利益率 / 粗利率：% 表示（値はそのまま）
-                aoa[sheetRow][col] = {
-                    v: n,
-                    t: "n",
-                    s: { ...valueStyle, numFmt: "0.0%" }
-                };
+                const s = applyNegativeRed({ ...valueStyle, numFmt: "0.0%" }, n);
+                aoa[sheetRow][col] = { v: n, t: "n", s };
             } else {
                 // それ以外：3桁カンマ（通常の数値）
-                aoa[sheetRow][col] = {
-                    v: n,
-                    t: "n",
-                    s: { ...valueStyle, numFmt: "#,##0" }
-                };
+                const s = applyNegativeRed({ ...valueStyle, numFmt: "#,##0" }, n);
+                aoa[sheetRow][col] = { v: n, t: "n", s };
 
                 /*
                 // --- 1000円単位にしたい場合（復活用） ---
-                // 値を /1000 して「千円」単位で表示する
-                aoa[sheetRow][col] = {
-                  v: n / 1000,
-                  t: "n",
-                  s: { ...valueStyle, numFmt: "#,##0" } // 見た目はカンマ区切り
-                  // 例：単位も表示したいなら → numFmt: '#,##0"千円"'
-                };
+                const s2 = applyNegativeRed({ ...valueStyle, numFmt: "#,##0" }, n);
+                aoa[sheetRow][col] = { v: n / 1000, t: "n", s: s2 };
                 */
             }
+
+            /*
+            // --- 1000円単位にしたい場合（復活用） ---
+            // 値を /1000 して「千円」単位で表示する
+            aoa[sheetRow][col] = {
+              v: n / 1000,
+              t: "n",
+              s: { ...valueStyle, numFmt: "#,##0" } // 見た目はカンマ区切り
+              // 例：単位も表示したいなら → numFmt: '#,##0"千円"'
+            };
+            */
         }
     }
 
