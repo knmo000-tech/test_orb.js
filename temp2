@@ -1,0 +1,34 @@
+function getIntersectionIndexes(intersection, datasource) {
+  if (intersection === "all") return Array.from({ length: datasource.length }, (_, i) => i);
+  return Array.isArray(intersection) ? intersection : [];
+}
+
+function getNumber(row, fieldIndex) {
+  const v = Array.isArray(row) ? row[fieldIndex] : row?.[fieldIndex];
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * 率（ratio）を作る: Σ(numerator) / Σ(denominator)
+ * 例：利益率 = Σ(利益) / Σ(売上)
+ */
+function aggRatioOfSums(numeratorFieldIndex, denominatorFieldIndex) {
+  return function (_datafield, intersection, datasource /*, rowIdxs, colIdxs */) {
+    const idxs = getIntersectionIndexes(intersection, datasource);
+
+    let num = 0;
+    let den = 0;
+
+    for (const i of idxs) {
+      const row = datasource[i];
+      const a = getNumber(row, numeratorFieldIndex);   // 分子（利益など）
+      const b = getNumber(row, denominatorFieldIndex); // 分母（売上など）
+      if (a == null || b == null) continue;
+      num += a;
+      den += b;
+    }
+
+    return den === 0 ? 0 : (num / den);
+  };
+}
