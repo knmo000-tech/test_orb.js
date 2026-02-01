@@ -1,0 +1,151 @@
+using System;
+using System.IO;
+using System.Net;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace WinFormsServer
+{
+    public partial class Form1 : Form
+    {
+        private HttpListener _listener;
+        private CancellationTokenSource _cts;
+
+        // まずは localhost 推奨（URLACL問題を避けやすい）
+        private const string Prefix = "http://localhost:8080/";
+
+        public Form1()
+        {
+            InitializeComponent();
+        }
+
+        // 起動時に自動で開始
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            StartServer();
+        }
+
+        // 終了時に停止
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            StopServer();
+            base.OnFormClosing(e);
+        }
+
+        private void StartServer()
+        {
+            if (_listener != null && _listener.IsListening) return;
+
+            _listener = new HttpListener();
+            _listener.Prefixes.Add(Prefix);
+
+            _cts = new CancellationTokenSource();
+            _listener.Start();
+
+            _ = Task.Run(() => AcceptLoopAsync(_cts.Token));
+        }
+
+        private void StopServer()
+        {
+            try { _cts?.Cancel(); } catch { }
+
+            try
+            {
+                if (_listener != null)
+                {
+                    if (_listener.IsListening) _listener.Stop();
+                    _listener.Close();
+                }
+            }
+            catch { /* ignore */ }
+
+            _listener = null;
+
+            try { _cts?.Dispose(); } catch { }
+            _cts = null;
+        }
+
+        private async Task AcceptLoopAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                HttpListenerContext ctx = null;
+
+                try
+                {
+                    ctx = await _listener.GetContextAsync().ConfigureAwait(false);
+                }
+                catch (HttpListenerException)
+                {
+                    // Stop() で抜ける
+                    break;
+                }
+                catch (ObjectDisposedException)
+                {
+                    break;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                _ = Task.Run(() => HandleAsync(ctx), token);
+            }
+        }
+
+        private async Task HandleAsync(HttpListenerContext ctx)
+        {
+            var req = ctx.Request;
+            var res = ctx.Response;
+
+            try
+            {
+                if (req.HttpMethod == "POST" &&
+                    req.Url.AbsolutePath.Equals("/api/submit", StringComparison.OrdinalIgnoreCase))
+                {
+                    string requestBody;
+                    using (var reader = new StreamReader(req.InputStream, req.ContentEncoding ?? Encoding.UTF8))
+                    {
+                        requestBody = await reader.ReadToEndAsync().ConfigureAwait(false);
+                    }
+
+                    // 受信内容は今回は使わず、固定の応答を返す
+                    var responseJson =
+                        "{"
+                        + "\"result\":\"ok\","
+                        + "\"receivedBytes\":" + Encoding.UTF8.GetByteCount(requestBody) + ","
+                        + "\"serverTime\":\"" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\""
+                        + "}";
+
+                    await WriteJsonAsync(res, 200, responseJson).ConfigureAwait(false);
+                    return;
+                }
+
+                await WriteJsonAsync(res, 404, "{\"result\":\"not_found\"}").ConfigureAwait(false);
+            }
+            catch
+            {
+                try { await WriteJsonAsync(res, 500, "{\"result\":\"error\"}").ConfigureAwait(false); } catch { }
+            }
+            finally
+            {
+                try { res.Close(); } catch { }
+            }
+        }
+
+        private static async Task WriteJsonAsync(HttpListenerResponse res, int statusCode, string json)
+        {
+            var bytes = Encoding.UTF8.GetBytes(json ?? "{}");
+            res.StatusCode = statusCode;
+            res.ContentType = "application/json; charset=utf-8";
+            res.ContentEncoding = Encoding.UTF8;
+            res.ContentLength64 = bytes.Length;
+
+            await res.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+            await res.OutputStream.FlushAsync().ConfigureAwait(false);
+        }
+    }
+}
