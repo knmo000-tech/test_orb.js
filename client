@@ -1,0 +1,64 @@
+using System;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+
+namespace WpfClient
+{
+    public partial class MainWindow : Window
+    {
+        private static readonly Lazy<HttpClient> _client = new Lazy<HttpClient>(CreateHttpClient);
+
+        private const string Endpoint = "http://localhost:8080/api/submit";
+
+        public MainWindow()
+        {
+            InitializeComponent();
+        }
+
+        private async void btnSend_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // 固定ダミーJSON（完全固定）
+                const string dummyJson = "{\"type\":\"dummy\",\"message\":\"HELLO\"}";
+
+                using (var content = new StringContent(dummyJson, Encoding.UTF8, "application/json"))
+                {
+                    // 応答は一応読み捨て（例外があれば飛ぶ）
+                    var resp = await _client.Value.PostAsync(Endpoint, content).ConfigureAwait(false);
+                    _ = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                }
+
+                // 画面表示も不要ならこのMessageBoxも消してOK
+                await Dispatcher.InvokeAsync(() => MessageBox.Show("Sent."));
+            }
+            catch (Exception ex)
+            {
+                await Dispatcher.InvokeAsync(() => MessageBox.Show(ex.Message));
+            }
+        }
+
+        private static HttpClient CreateHttpClient()
+        {
+            // OS(ユーザー)のプロキシ設定（手動/自動検出/PAC含む）を取得
+            var systemProxy = WebRequest.GetSystemWebProxy();
+
+            // 認証プロキシ向け（必要ない環境でも害は少ない）
+            systemProxy.Credentials = CredentialCache.DefaultCredentials;
+
+            var handler = new HttpClientHandler
+            {
+                UseProxy = true,
+                Proxy = systemProxy
+            };
+
+            return new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(30)
+            };
+        }
+    }
+}
